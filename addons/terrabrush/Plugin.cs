@@ -110,6 +110,7 @@ public partial class Plugin : EditorPlugin {
 
         if (_toolInfo != null) {
             _toolInfo.Position = viewportCamera.GetViewport().GetMousePosition() + viewportCamera.GetViewport().GetParent<SubViewportContainer>().GlobalPosition + new Vector2I(ToolInfoOffset, ToolInfoOffset);
+            
             _toolInfo.SetText(_currentTerraBrushNode?.CurrentTool?.GetToolInfo(_currentTerraBrushNode.TerrainTool));
         }
 
@@ -120,6 +121,8 @@ public partial class Plugin : EditorPlugin {
             } else {
                 _brushDecal.Visible = true;
                 _brushDecal.Position = new Vector3(meshPosition.X, 0, meshPosition.Z);
+                _brushDecal.SetRotation(_currentTerraBrushNode.BrushRotationDegrees);
+
             }
 
             _mouseHitPosition = meshPosition - _currentTerraBrushNode.GlobalPosition;
@@ -176,6 +179,19 @@ public partial class Plugin : EditorPlugin {
                 UpdateAutoAddZonesSetting();
                 return (int) AfterGuiInput.Stop;
             }
+            if (inputEvent.IsAction(KeybindManager.StringNames.RotateLeft)) {
+                _currentTerraBrushNode.SetBrushRotation(_currentTerraBrushNode.BrushRotationDegrees - 15f);
+                _brushDecal.SetRotation(_currentTerraBrushNode.BrushRotationDegrees);
+
+                return (int)AfterGuiInput.Stop;
+            }
+
+            if (inputEvent.IsAction(KeybindManager.StringNames.RotateRight)) {
+                _currentTerraBrushNode.SetBrushRotation(_currentTerraBrushNode.BrushRotationDegrees + 15f);
+                _brushDecal.SetRotation(_currentTerraBrushNode.BrushRotationDegrees);
+                return (int)AfterGuiInput.Stop;
+            }
+
         }
 
         if (@event is InputEventMouseButton inputButton) {

@@ -21,6 +21,9 @@ public partial class KeybindManager : RefCounted {
     private readonly InputEventKey ToggleAutoAddZonesKey = new InputEventKey() { Keycode = Key.K };
     private readonly InputEventKey LockXAxis = new InputEventKey() { Keycode = Key.X };
     private readonly InputEventKey LockZAxis = new InputEventKey() { Keycode = Key.Z };
+    private readonly InputEventKey RotateLeftKey = new() { Keycode = Key.Q };
+    private readonly InputEventKey RotateRightKey = new() { Keycode = Key.E };
+
     #endregion
 
     #region Public String Names
@@ -36,6 +39,9 @@ public partial class KeybindManager : RefCounted {
 	    public static readonly StringName ToggleAutoAddZones = new StringName("terrabrush_toggle_auto_add_zones");
 	    public static readonly StringName LockXAxis = new StringName("terrabrush_lock_x_axis");
 	    public static readonly StringName LockZAxis = new StringName("terrabrush_lock_z_axis");
+	    public static readonly StringName RotateLeft = new("terrabrush_rotate_left");
+	    public static readonly StringName RotateRight = new("terrabrush_rotate_right");
+
     }
     #endregion
 
@@ -69,6 +75,12 @@ public partial class KeybindManager : RefCounted {
 		    { StringNames.LockXAxis, LockXAxis },
 		    { StringNames.LockZAxis, LockZAxis },
 	    };
+	    _actionNames.Add(StringNames.RotateLeft);
+	    _actionNames.Add(StringNames.RotateRight);
+
+	    _defaultKeys.Add(StringNames.RotateLeft, RotateLeftKey);
+	    _defaultKeys.Add(StringNames.RotateRight, RotateRightKey);
+
     }
 
     public static Array<InputEvent> GetBinding(StringName actionName) => InputMap.Singleton.ActionGetEvents(actionName);

@@ -23,7 +23,7 @@ void fragment() {
 		VERTEX,
 		FRAGCOORD,
 		VIEW,
-		_worldVertex, 
+		_worldVertex,
 		NORMAL,
 		ALBEDO,
 		NORMAL_MAP,

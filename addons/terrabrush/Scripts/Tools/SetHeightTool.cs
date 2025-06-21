@@ -80,6 +80,13 @@ public class SetHeightTool : ToolBase {
     }
 
     public override void Paint(TerrainToolType toolType, Image brushImage, int brushSize, float brushStrength, Vector2 imagePosition) {
+        if (brushImage == null || brushImage.IsEmpty())
+        {
+            GD.PushError("Tool received invalid brush image.");
+            return;
+        }
+        
+
         if (Input.IsKeyPressed(Key.Ctrl)) {
             var initialPoint = ZoneUtils.GetPixelToZoneInfo(imagePosition.X, imagePosition.Y, _terraBrush.ZonesSize, _terraBrush.Resolution);
             var imageZoneInfo = GetImageZoneInfoForPosition(initialPoint, 0, 0, true);

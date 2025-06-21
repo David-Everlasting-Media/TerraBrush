@@ -26,6 +26,7 @@ public partial class Foliage : Node3D {
 	[Export] public int TextureDetail { get;set; } = 1;
     [Export] public float WaterFactor { get;set; }
     [Export] public FoliageDefinitionResource Definition { get;set; }
+    
 
     public override void _Ready() {
         base._Ready();
@@ -220,10 +221,10 @@ public partial class Foliage : Node3D {
         }
 
         var newPosition = new Vector3(xPosition, 0, zPosition);
-        if (newPosition.DistanceTo(_lastUpdatedPosition) > maxCellWidth) {
+        // if (newPosition.DistanceTo(_lastUpdatedPosition) > maxCellWidth) {
             this._foliageShader.SetShaderParameter(StringNames.GlobalPosition, newPosition);
             _lastUpdatedPosition = newPosition;
-        }
+        // }
     }
 
     public void UpdateAABB() {

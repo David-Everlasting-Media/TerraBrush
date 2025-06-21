@@ -1,7 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using Godot;
-
 namespace TerraBrush;
 
 #if TOOLS
@@ -36,6 +35,7 @@ public partial class TerraBrushTool : Node3D {
     private int _brushSize = 100;
     private Image _originalBrushImage;
     private Image _brushImage;
+    private Image _rotatedBrushImage;
     private int? _selectedBrushIndex = null;
     private float _brushStrength = 0.1f;
     private float _selectedSetHeight = 0;
@@ -46,6 +46,8 @@ public partial class TerraBrushTool : Node3D {
     private int? _objectIndex = null;
     private ToolBase _currentTool;
     private TerrainToolType _terrainTool = TerrainToolType.TerrainAdd;
+    private float _brushRotationDegrees = 0f;
+    private float _lastRotation = -999f;
 
     public TerrainToolType TerrainTool => _terrainTool;
     public ToolBase CurrentTool => _currentTool;
@@ -61,6 +63,7 @@ public partial class TerraBrushTool : Node3D {
     public int? TextureSetIndex => _textureSetIndex;
     public int? FoliageIndex => _foliageIndex;
     public int? ObjectIndex => _objectIndex;
+    public float BrushRotationDegrees => _brushRotationDegrees;
 
     [Export(PropertyHint.None, $"{ButtonInspectorPlugin.ButtonInspectorHintString}_{nameof(OnCreateTerrain)}")]
     public bool CreateTerrain {
@@ -138,30 +141,259 @@ public partial class TerraBrushTool : Node3D {
         _currentTool?.BeginPaint();
     }
 
-    public void EditTerrain(Vector3 meshPosition) {
-        var meshToImagePosition = meshPosition + new Vector3(ZonesSize / 2, 0, ZonesSize / 2);
-        var imagePosition = new Vector2(meshToImagePosition.X, meshToImagePosition.Z);
+    public void EditTerrain(Vector3 meshPosition)
+    {
+        // Regenerate rotated brush if rotation changed or brush doesn't exist
+        if (_rotatedBrushImage == null || _lastRotation != _brushRotationDegrees)
+        {
+            if (_originalBrushImage == null || _originalBrushImage.IsEmpty())
+            {
+                GD.PushError("Original brush image is null or empty.");
+                return;
+            }
 
-        _currentTool?.Paint(_terrainTool, _brushImage, _brushSize, _brushStrength, imagePosition);
+            // Simple approach: resize first, then rotate with larger output size to prevent clipping
+            var resizedBrush = new Image();
+            resizedBrush.CopyFrom(_originalBrushImage);
+            resizedBrush.Resize(_brushSize, _brushSize, Image.Interpolation.Lanczos);
+
+            // Rotate with larger size output to prevent clipping
+            _rotatedBrushImage = RotateImageSimple(resizedBrush, _brushRotationDegrees);
+            _lastRotation = _brushRotationDegrees;
+
+            if (_rotatedBrushImage == null || _rotatedBrushImage.IsEmpty())
+            {
+                GD.PushError("Rotated brush image is invalid.");
+                return;
+            }
+
+            // Update the main brush image to match the rotated one
+            _brushImage = new Image();
+            _brushImage.CopyFrom(_rotatedBrushImage);
+
+            GD.Print($"Painting with rotated brush: original_size={_brushSize} rotated_size={_rotatedBrushImage.GetWidth()} rotation={_brushRotationDegrees}");
+        }
+
+        // Convert mesh position to image coordinates
+        var localPos = meshPosition - GlobalPosition;
+        
+        // Apply the same coordinate transformation used throughout TerraBrush
+        var scaledX = (localPos.X + ZonesSize / 2f) * Resolution;
+        var scaledZ = (localPos.Z + ZonesSize / 2f) * Resolution;
+        var imagePosition = new Vector2(scaledX, scaledZ);
+
+        // Use the actual size of the rotated brush (which may be larger than _brushSize)
+        int actualBrushSize = _rotatedBrushImage.GetWidth();
+
+        // Use the rotated brush for painting
+        _currentTool?.Paint(
+            _terrainTool,
+            _rotatedBrushImage,
+            actualBrushSize,  // Use the actual rotated brush size
+            _brushStrength,
+            imagePosition
+        );
     }
 
     public void EndEditTerrain() {
         _currentTool?.EndPaint();
     }
 
-    public void SetCurrentBrush(int brushIndex, Image brushImage) {
-        _selectedBrushIndex = brushIndex;
-        _originalBrushImage = brushImage;
+    public void RotateBrush(float deltaDegrees)
+    {
+        _brushRotationDegrees = Mathf.PosMod(_brushRotationDegrees + deltaDegrees, 360f);
+        
+        // Force regeneration on next EditTerrain call
+        _lastRotation = -999f;
+    }
 
+    public void SetBrushRotation(float degrees)
+    {
+        _brushRotationDegrees = Mathf.PosMod(degrees, 360f);
+        
+        // Force regeneration on next EditTerrain call
+        _lastRotation = -999f;
+    }
+
+    private Image RotateImageSimple(Image src, float degrees)
+    {
+        if (Mathf.Abs(degrees) < 0.01f) // No rotation needed
+        {
+            var copy = new Image();
+            copy.CopyFrom(src);
+            return copy;
+        }
+
+        int srcSize = src.GetWidth(); // Assume square
+        
+        // Calculate the size needed to fit the entire rotated image
+        float angleRad = Mathf.DegToRad(Mathf.Abs(degrees));
+        float cos = Mathf.Cos(angleRad);
+        float sin = Mathf.Sin(angleRad);
+        
+        // Calculate diagonal length to ensure we can fit the rotated image
+        float diagonal = srcSize * Mathf.Sqrt(2f);
+        int newSize = Mathf.CeilToInt(diagonal);
+        
+        // Make sure it's at least as big as the source
+        newSize = Mathf.Max(newSize, srcSize);
+        
+        // Create result with larger size to accommodate rotation
+        Image result = Image.Create(newSize, newSize, false, src.GetFormat());
+        result.Fill(new Color(0, 0, 0, 0));
+
+        float rotAngleRad = Mathf.DegToRad(degrees);
+        Vector2 srcCenter = new Vector2(srcSize / 2f, srcSize / 2f);
+        Vector2 dstCenter = new Vector2(newSize / 2f, newSize / 2f);
+        
+        float rCos = Mathf.Cos(rotAngleRad); // Remove the negative to match decal direction
+        float rSin = Mathf.Sin(rotAngleRad);
+
+        for (int y = 0; y < newSize; y++)
+        {
+            for (int x = 0; x < newSize; x++)
+            {
+                Vector2 dstPos = new Vector2(x, y);
+                Vector2 dstOffset = dstPos - dstCenter;
+                
+                // Rotate the offset to find source position
+                Vector2 srcOffset = new Vector2(
+                    dstOffset.X * rCos - dstOffset.Y * rSin,
+                    dstOffset.X * rSin + dstOffset.Y * rCos
+                );
+                
+                Vector2 srcPos = srcCenter + srcOffset;
+                
+                int srcX = Mathf.RoundToInt(srcPos.X);
+                int srcY = Mathf.RoundToInt(srcPos.Y);
+                
+                // Simple bounds check and copy
+                if (srcX >= 0 && srcY >= 0 && srcX < srcSize && srcY < srcSize)
+                {
+                    result.SetPixel(x, y, src.GetPixel(srcX, srcY));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private Image RotateImage(Image src, float degrees)
+    {
+        if (Mathf.Abs(degrees) < 0.01f) // No rotation needed
+        {
+            var copy = new Image();
+            copy.CopyFrom(src);
+            return copy;
+        }
+
+        int srcSize = src.GetWidth(); // Assuming square brush
+        
+        // Calculate the size needed to fit the rotated image without clipping
+        float angleRad = Mathf.DegToRad(Mathf.Abs(degrees));
+        float cos = Mathf.Cos(angleRad);
+        float sin = Mathf.Sin(angleRad);
+        
+        // Calculate the bounding box size for the rotated image
+        float newSize = srcSize * (cos + sin);
+        int rotatedSize = Mathf.CeilToInt(newSize);
+        
+        // Ensure the rotated size is not smaller than original (for small angles)
+        rotatedSize = Mathf.Max(rotatedSize, srcSize);
+        
+        // Create the larger canvas for the rotated image
+        Image result = Image.Create(rotatedSize, rotatedSize, false, src.GetFormat());
+        result.Fill(new Color(0, 0, 0, 0)); // transparent background
+
+        float rotAngleRad = Mathf.DegToRad(degrees);
+        Vector2 srcCenter = new Vector2(srcSize / 2f, srcSize / 2f);
+        Vector2 dstCenter = new Vector2(rotatedSize / 2f, rotatedSize / 2f);
+
+        // Use backward rotation mapping for better quality
+        float rCos = Mathf.Cos(-rotAngleRad); // Negative for proper rotation direction
+        float rSin = Mathf.Sin(-rotAngleRad);
+
+        for (int dstY = 0; dstY < rotatedSize; dstY++)
+        {
+            for (int dstX = 0; dstX < rotatedSize; dstX++)
+            {
+                // Map destination pixel back to source
+                Vector2 dstOffset = new Vector2(dstX, dstY) - dstCenter;
+                
+                Vector2 srcOffset = new Vector2(
+                    dstOffset.X * rCos - dstOffset.Y * rSin,
+                    dstOffset.X * rSin + dstOffset.Y * rCos
+                );
+
+                Vector2 srcPos = srcCenter + srcOffset;
+
+                // Check if the source position is within bounds
+                if (srcPos.X >= 0 && srcPos.Y >= 0 && srcPos.X < srcSize && srcPos.Y < srcSize)
+                {
+                    // Bilinear interpolation for smoother results
+                    int srcX = Mathf.FloorToInt(srcPos.X);
+                    int srcY = Mathf.FloorToInt(srcPos.Y);
+
+                    if (srcX < srcSize - 1 && srcY < srcSize - 1)
+                    {
+                        float fracX = srcPos.X - srcX;
+                        float fracY = srcPos.Y - srcY;
+
+                        Color c00 = src.GetPixel(srcX, srcY);
+                        Color c10 = src.GetPixel(srcX + 1, srcY);
+                        Color c01 = src.GetPixel(srcX, srcY + 1);
+                        Color c11 = src.GetPixel(srcX + 1, srcY + 1);
+
+                        Color c0 = c00.Lerp(c10, fracX);
+                        Color c1 = c01.Lerp(c11, fracX);
+                        Color finalColor = c0.Lerp(c1, fracY);
+
+                        result.SetPixel(dstX, dstY, finalColor);
+                    }
+                    else
+                    {
+                        // Fallback to nearest neighbor for edge pixels
+                        result.SetPixel(dstX, dstY, src.GetPixel(srcX, srcY));
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public void SetCurrentBrush(int brushIndex, Image brushImage, float rotationDegrees = 0)
+    {
+        _selectedBrushIndex = brushIndex;
+        _originalBrushImage = new Image();
+        _originalBrushImage.CopyFrom(brushImage);
+
+        // Set initial rotation if provided
+        if (Mathf.Abs(rotationDegrees) > 0.01f)
+        {
+            _brushRotationDegrees = Mathf.PosMod(rotationDegrees, 360f);
+        }
+
+        // Force brush regeneration
+        _lastRotation = -999f;
+        
+        // Update brush size to trigger regeneration with current settings
         SetBrushSize(_brushSize);
     }
 
     public void SetBrushSize(int value) {
-        _brushImage = new Image();
-        _brushImage.CopyFrom(_originalBrushImage);
-        _brushImage.Resize(value, value);
-
         _brushSize = value;
+        
+        // Force regeneration of rotated brush with new size
+        _lastRotation = -999f;
+        
+        // Update the base brush image for immediate feedback
+        if (_originalBrushImage != null && !_originalBrushImage.IsEmpty())
+        {
+            _brushImage = new Image();
+            _brushImage.CopyFrom(_originalBrushImage);
+            _brushImage.Resize(value, value, Image.Interpolation.Lanczos);
+        }
     }
 
     public void SetBrushStrength(float value) {

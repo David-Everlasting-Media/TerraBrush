@@ -199,14 +199,18 @@ public partial class TerraBrush : TerraBrushTool {
     [Export]
     public override ZonesResource TerrainZones { get;set; }
 
-    public async override void _Ready() {
+    public async override void _Ready() 
+    {
+        
         base._Ready();
 
-#if TOOLS
-        if (Engine.IsEditorHint()) {
-            CompatibilityScript_0_4_Alpha.Convert(this);
-        }
-#endif
+
+
+        #if TOOLS
+            if (Engine.IsEditorHint()) {
+                CompatibilityScript_0_4_Alpha.Convert(this);
+            }
+        #endif
 
         _defaultNoise = ResourceLoader.Load<Texture2D>("res://addons/terrabrush/Resources/DefaultNoise.tres");
 
